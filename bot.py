@@ -35,7 +35,7 @@ def send_telegram_message(chat_id, text):
 
 @app.route('/')
 def home():
-    return "🤖 Бот работает на Python 3.13!"
+    return "🤖 Бот работает! Статус: ONLINE"
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
