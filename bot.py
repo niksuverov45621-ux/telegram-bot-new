@@ -1,0 +1,109 @@
+import os
+import logging
+from flask import Flask, request
+import requests
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Получаем переменные окружения
+BOT_TOKEN = os.environ.get('BOT_TOKEN')
+ADMIN_ID = os.environ.get('ADMIN_ID')
+
+# Проверка наличия токена
+if not BOT_TOKEN:
+    logger.error("❌ BOT_TOKEN не установлен!")
+    exit(1)
+
+app = Flask(__name__)
+
+def send_telegram_message(chat_id, text):
+    """Отправка сообщения через Telegram API"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    data = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML"
+    }
+    try:
+        response = requests.post(url, json=data)
+        return response.json()
+    except Exception as e:
+        logger.error(f"Ошибка отправки сообщения: {e}")
+        return None
+
+@app.route('/')
+def home():
+    return "🤖 Бот работает на Python 3.13!"
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    """Webhook от Telegram"""
+    try:
+        data = request.get_json()
+        
+        if 'message' in data:
+            message = data['message']
+            user = message.get('from', {})
+            text = message.get('text', '')
+            chat_id = message.get('chat', {}).get('id')
+            
+            user_id = user.get('id')
+            user_name = user.get('username', user.get('first_name', 'неизвестно'))
+            
+            # Логируем
+            logger.info(f"Сообщение от {user_id} ({user_name}): {text}")
+            
+            # Команда /start
+            if text == '/start':
+                send_telegram_message(
+                    chat_id,
+                    "👋 Привет! Я бот для связи. Просто напишите сообщение, и я перешлю его администратору."
+                )
+                return 'ok'
+            
+            # Формируем сообщение для админа
+            admin_message = (
+                f"📨 <b>Новое сообщение</b>\n"
+                f"👤 От: {user_name}\n"
+                f"🆔 ID: <code>{user_id}</code>\n"
+                f"💬 Текст:\n{text}"
+            )
+            
+            # Отправляем админу
+            send_telegram_message(ADMIN_ID, admin_message)
+            
+            # Подтверждаем пользователю
+            send_telegram_message(chat_id, "✅ Ваше сообщение отправлено администратору!")
+        
+        return 'ok'
+    except Exception as e:
+        logger.error(f"Ошибка обработки webhook: {e}")
+        return 'error', 500
+
+@app.route('/set_webhook', methods=['GET'])
+def set_webhook():
+    """Установка webhook через Telegram API"""
+    webhook_url = f"https://{request.host}/webhook"
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
+    data = {"url": webhook_url}
+    
+    try:
+        response = requests.post(url, json=data)
+        result = response.json()
+        
+        if result.get('ok'):
+            return f"✅ Webhook установлен: {webhook_url}"
+        else:
+            return f"❌ Ошибка: {result.get('description')}"
+    except Exception as e:
+        return f"❌ Ошибка при установке webhook: {e}"
+
+@app.route('/health', methods=['GET'])
+def health():
+    return {"status": "healthy", "python": "3.13.4"}
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
