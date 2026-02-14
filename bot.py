@@ -18,13 +18,13 @@ if not BOT_TOKEN:
 
 app = Flask(__name__)
 
-def send_telegram_message(chat_id, text):
+def send_telegram_message(chat_id, text, parse_mode='HTML'):
     """Отправка сообщения через Telegram API"""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     data = {
         "chat_id": chat_id,
         "text": text,
-        "parse_mode": "HTML"
+        "parse_mode": parse_mode
     }
     try:
         response = requests.post(url, json=data)
@@ -50,10 +50,14 @@ def webhook():
             chat_id = message.get('chat', {}).get('id')
             
             user_id = user.get('id')
-            user_name = user.get('username', user.get('first_name', 'неизвестно'))
+            # Формируем имя пользователя: first_name + last_name (если есть)
+            first_name = user.get('first_name', '')
+            last_name = user.get('last_name', '')
+            full_name = f"{first_name} {last_name}".strip() or "без имени"
+            username = user.get('username')
             
             # Логируем
-            logger.info(f"Сообщение от {user_id} ({user_name}): {text}")
+            logger.info(f"Сообщение от {user_id} ({full_name}): {text}")
             
             # Команда /start
             if text == '/start':
@@ -63,10 +67,17 @@ def webhook():
                 )
                 return 'ok'
             
+            # Создаем кликабельную ссылку на пользователя (работает в Telegram)
+            # Если есть username, можно использовать https://t.me/username, иначе tg://user?id=...
+            if username:
+                user_link = f"<a href=\"https://t.me/{username}\">{full_name}</a>"
+            else:
+                user_link = f"<a href=\"tg://user?id={user_id}\">{full_name}</a>"
+            
             # Формируем сообщение для админа
             admin_message = (
                 f"📨 <b>Новое сообщение</b>\n"
-                f"👤 От: {user_name}\n"
+                f"👤 От: {user_link}\n"
                 f"🆔 ID: <code>{user_id}</code>\n"
                 f"💬 Текст:\n{text}"
             )
@@ -103,6 +114,27 @@ def set_webhook():
 @app.route('/health', methods=['GET'])
 def health():
     return {"status": "healthy", "python": "3.13.4"}
+
+@app.route('/info', methods=['GET'])
+def info():
+    return {
+        "service": "telegram-bot",
+        "url": f"https://{request.host}",
+        "admin_id": ADMIN_ID,
+        "bot_token_set": bool(BOT_TOKEN)
+    }
+
+@app.route('/delete_webhook', methods=['GET'])
+def delete_webhook():
+    """Удаление webhook"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook"
+    response = requests.post(url)
+    result = response.json()
+    
+    if result.get('ok'):
+        return "✅ Webhook удален"
+    else:
+        return f"❌ Ошибка: {result.get('description')}"
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
