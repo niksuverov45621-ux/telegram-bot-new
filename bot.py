@@ -4,6 +4,7 @@ import logging
 import threading
 from flask import Flask
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 # ===== НАСТРОЙКИ =====
 BOT_TOKEN = os.environ.get('BOT_TOKEN', '8340258435:AAH0f7SFjrLm1x3utfzHEfGxbAmPF0oH8t0')
@@ -49,24 +50,27 @@ def forward_message(update, context):
 
     logger.info(f"Сообщение от {user.first_name}: {text[:100]}...")
 
-    # Формируем сообщение администратору с удобной ссылкой
+    # Создаём кнопку "НАПИСАТЬ", ведущую прямо в чат с пользователем
+    keyboard = [[InlineKeyboardButton("📝 НАПИСАТЬ", url=f"tg://user?id={user.id}")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    # Формируем простое текстовое сообщение
     admin_message = (
         f"📨 *Новое сообщение*\n\n"
-        f"👤 *Имя:* {user.first_name}\n"
-        f"📛 *Username:* @{user.username if user.username else 'нет'}\n"
-        f"🆔 *ID:* `{user.id}`\n"
-        f"─────────────────────\n"
-        f"🔗 *Ссылка на пользователя:*\n"
-        f"👉 [Нажмите сюда](tg://user?id={user.id})\n"
-        f"─────────────────────\n\n"
-        f"💬 *Текст:*\n{text}"
+        f"*От:* {user.first_name}\n"
+        f"*ID:* `{user.id}`\n"
     )
+    # Добавляем username, если он есть (но можно и не добавлять)
+    if user.username:
+        admin_message += f"*Username:* @{user.username}\n"
+    admin_message += f"\n*Текст:*\n{text}"
 
-    # Отправляем администратору
+    # Отправляем администратору вместе с кнопкой
     context.bot.send_message(
         chat_id=ADMIN_ID,
         text=admin_message,
-        parse_mode='Markdown'
+        parse_mode='Markdown',
+        reply_markup=reply_markup
     )
 
     # Подтверждение пользователю
